@@ -9,6 +9,7 @@
 #define JOYSTICK_MIN_VALUE 0
 #define JOYSTICK_MAX_VALUE 4095
 #define BUTTON_A_PIN 21
+#define BUTTON_PLAYER_PIN 19
 
 const char WIFI_SSID[] = "wifi_ssid";
 const char WIFI_PASSWORD[] = "wifi_password";
@@ -19,8 +20,8 @@ const char MQTT_CLIENT_ID[] = "esp32-homekit-controller-86";
 const char MQTT_USERNAME[] = "rw";
 const char MQTT_PASSWORD[] = "readwrite";
 
-const char PUBLISH_TOPIC_PLAYER1[] = "pong/player1/position";
-const char PUBLISH_TOPIC_PLAYER2[] = "pong/player2/position";
+const char PUBLISH_TOPIC_PLAYER1[] = "esgi/imoc5/pong/player1/position";
+const char PUBLISH_TOPIC_PLAYER2[] = "esgi/imoc5/pong/player2/position";
 int playerId = 1;
 
 WiFiClient network;
@@ -29,7 +30,6 @@ MQTTClient mqtt = MQTTClient(256);
 int prevXValue = 0;
 int prevYValue = 0;
 int prevButtonAState = HIGH;
-
 
 int normalizeJoystickValue(int rawValue) {
   return map(rawValue, JOYSTICK_MIN_VALUE, JOYSTICK_MAX_VALUE, -100, 100);
@@ -52,34 +52,38 @@ void connectToMQTT() {
   Serial.println("ESP32 - MQTT broker Connected");
 }
 
-void sendMQTT(int xValue, int yValue, int buttonAState) {
-  analogWrite(EXT_LED_PIN, 10);
+void sendMQTT(int xValue, int yValue, int buttonAState, bool shouldSendX, bool shouldSendY, bool shouldSendButtonAState) {
+  bool shouldSendMQTT = false;
   StaticJsonDocument<200> message;
   message["timestamp"] = millis();
 
-  if (xValue == NULL && yValue == NULL && buttonAState == NULL) {
-    // Serial.println("sendMQTT::Only null values sent");
-    analogWrite(EXT_LED_PIN, 0);
-    return;
+  if (shouldSendX) {
+    message["xValue"] = xValue;
+    shouldSendMQTT = true;
+  }
+  if (shouldSendY) {
+    message["yValue"] = yValue;
+    shouldSendMQTT = true;
+  }
+  if (shouldSendButtonAState) {
+    message["buttonA"] = buttonAState;
+    shouldSendMQTT = true;
   }
 
-  if (xValue != NULL) {
-    message["xValue"] = xValue;
-  }
-  if (yValue != NULL) {
-    message["yValue"] = yValue;
-  }
-  if (buttonAState != NULL) {
-    message["buttonA"] = buttonAState;
-  }
+  if (!shouldSendMQTT) return;
+
+  analogWrite(EXT_LED_PIN, 10);
 
   char messageBuffer[512];
   serializeJson(message, messageBuffer);
-  mqtt.publish(PUBLISH_TOPIC_PLAYER1, messageBuffer);
+
+  const char* playerTopic = (playerId == 2) ? PUBLISH_TOPIC_PLAYER2 : PUBLISH_TOPIC_PLAYER1;
+
+  mqtt.publish(playerTopic, messageBuffer);
 
   Serial.println("ESP32 - sent to MQTT:");
   Serial.print("- topic: ");
-  Serial.println(PUBLISH_TOPIC_PLAYER1);
+  Serial.println(playerTopic);
   Serial.print("- payload:");
   Serial.println(messageBuffer);
   Serial.println();
@@ -94,6 +98,7 @@ void setup() {
 
   pinMode(EXT_LED_PIN, OUTPUT);
   pinMode(BUTTON_A_PIN, INPUT);
+  pinMode(BUTTON_PLAYER_PIN, INPUT);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -114,6 +119,7 @@ void loop() {
   int xValue = analogRead(VRX_PIN);
   int yValue = analogRead(VRY_PIN);
   int buttonAState = digitalRead(BUTTON_A_PIN);
+  int buttonPlayerState = digitalRead(BUTTON_PLAYER_PIN);
 
   bool shouldSendXValue = false;
   bool shouldSendYValue = false;
@@ -147,11 +153,16 @@ void loop() {
     shouldSendButtonAState = true;
   }
 
-  sendMQTT(
-    shouldSendXValue ? xValue : NULL,
-    shouldSendYValue ? yValue : NULL,
-    shouldSendButtonAState ? buttonAState : NULL
-  );
+  if (buttonPlayerState == HIGH) {
+    analogWrite(EXT_LED_PIN, 200);
+    playerId = playerId == 1 ? 2 : 1;
+    Serial.print("Change to player ");
+    Serial.println(playerId);
+    delay(300);
+    analogWrite(EXT_LED_PIN, 0);
+  }
+
+  sendMQTT(xValue, yValue, buttonAState, shouldSendXValue, shouldSendYValue, shouldSendButtonAState);
 
   delay(100);
 }
