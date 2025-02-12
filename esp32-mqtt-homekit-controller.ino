@@ -125,14 +125,16 @@ void loop() {
   bool shouldSendYValue = false;
   bool shouldSendButtonAState = false;
 
+  int mappedXValue = normalizeJoystickValue(xValue);
+  int mappedYValue = normalizeJoystickValue(yValue);
+
 
   if (abs(xValue - prevXValue) > JOYSTICK_DEADZONE) {
     prevXValue = xValue;
     // Serial.print("new value x : ");
     // Serial.println(xValue);
-    int mappedX = normalizeJoystickValue(prevXValue);
     Serial.print("new mapped value x : ");
-    Serial.println(mappedX);
+    Serial.println(mappedXValue);
     shouldSendXValue = true;
   }
 
@@ -140,9 +142,8 @@ void loop() {
     prevYValue = yValue;
     // Serial.print("new value y : ");
     // Serial.println(yValue);
-    int mappedY = normalizeJoystickValue(prevYValue);
     Serial.print("new mapped value y : ");
-    Serial.println(mappedY);
+    Serial.println(mappedYValue);
     shouldSendYValue = true;
   }
 
@@ -162,7 +163,7 @@ void loop() {
     analogWrite(EXT_LED_PIN, 0);
   }
 
-  sendMQTT(xValue, yValue, buttonAState, shouldSendXValue, shouldSendYValue, shouldSendButtonAState);
+  sendMQTT(mappedXValue, mappedYValue, buttonAState, shouldSendXValue, shouldSendYValue, shouldSendButtonAState);
 
-  delay(100);
+  delay(50);
 }
