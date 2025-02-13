@@ -8,8 +8,8 @@
 #define JOYSTICK_DEADZONE 50
 #define JOYSTICK_MIN_VALUE 0
 #define JOYSTICK_MAX_VALUE 4095
-#define BUTTON_A_PIN 21
 #define BUTTON_PLAYER_PIN 19
+#define BUTTON_A_PIN 21
 
 const char WIFI_SSID[] = "wifi_ssid";
 const char WIFI_PASSWORD[] = "wifi_password";
@@ -62,10 +62,12 @@ void sendMQTT(int xValue, int yValue, int buttonAState, bool shouldSendX, bool s
     shouldSendMQTT = true;
   }
   if (shouldSendY) {
+    message["xValue"] = xValue;
     message["yValue"] = yValue;
     shouldSendMQTT = true;
   }
   if (shouldSendButtonAState) {
+    message["xValue"] = xValue;
     message["buttonA"] = buttonAState;
     shouldSendMQTT = true;
   }
@@ -85,7 +87,7 @@ void sendMQTT(int xValue, int yValue, int buttonAState, bool shouldSendX, bool s
   const char* playerTopic = (playerId == 2) ? PUBLISH_TOPIC_PLAYER2 : PUBLISH_TOPIC_PLAYER1;
 
   bool published = mqtt.publish(playerTopic, messageBuffer);
-  if(!published) {
+  if (!published) {
     Serial.print("Failed to publish to MQTT broker");
     sendMQTT(xValue, yValue, buttonAState, shouldSendX, shouldSendY, shouldSendButtonAState);
     return;
