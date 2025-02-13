@@ -79,8 +79,12 @@ void sendMQTT(int xValue, int yValue, int buttonAState, bool shouldSendX, bool s
 
   const char* playerTopic = (playerId == 2) ? PUBLISH_TOPIC_PLAYER2 : PUBLISH_TOPIC_PLAYER1;
 
-  mqtt.publish(playerTopic, messageBuffer);
-
+  bool published = mqtt.publish(playerTopic, messageBuffer);
+  if(!published) {
+    Serial.print("Failed to publish to MQTT broker");
+    sendMQTT(xValue, yValue, buttonAState, shouldSendX, shouldSendY, shouldSendButtonAState);
+    return;
+  }
   Serial.println("ESP32 - sent to MQTT:");
   Serial.print("- topic: ");
   Serial.println(playerTopic);
@@ -116,6 +120,11 @@ void setup() {
 }
 
 void loop() {
+  if (!mqtt.connected()) {
+    Serial.println("ESP32 - Lost connection to MQTT broker. Trying again...");
+    connectToMQTT();
+  }
+
   int xValue = analogRead(VRX_PIN);
   int yValue = analogRead(VRY_PIN);
   int buttonAState = digitalRead(BUTTON_A_PIN);
