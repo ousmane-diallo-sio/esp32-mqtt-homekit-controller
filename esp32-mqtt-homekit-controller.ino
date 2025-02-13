@@ -11,12 +11,12 @@
 #define BUTTON_A_PIN 21
 #define BUTTON_PLAYER_PIN 19
 
-const char WIFI_SSID[] = "wifi_ssid";
-const char WIFI_PASSWORD[] = "wifi_password";
+const char WIFI_SSID[] = "Pixel_4049";
+const char WIFI_PASSWORD[] = "Ibnou92Pez";
 
-const char MQTT_BROKER_ADRRESS[] = "test.mosquitto.org";
+const char MQTT_BROKER_ADDRESS[] = "test.mosquitto.org";
 const int MQTT_PORT = 1884;
-const char MQTT_CLIENT_ID[] = "esp32-homekit-controller-86";
+const char MQTT_CLIENT_ID[] = "esp32-homekit-controller-89";
 const char MQTT_USERNAME[] = "rw";
 const char MQTT_PASSWORD[] = "readwrite";
 
@@ -25,7 +25,7 @@ const char PUBLISH_TOPIC_PLAYER2[] = "esgi/imoc5/pong/player2/position";
 int playerId = 1;
 
 WiFiClient network;
-MQTTClient mqtt = MQTTClient(256);
+MQTTClient mqtt(256);
 
 int prevXValue = 0;
 int prevYValue = 0;
@@ -36,7 +36,7 @@ int normalizeJoystickValue(int rawValue) {
 }
 
 void connectToMQTT() {
-  mqtt.begin(MQTT_BROKER_ADRRESS, MQTT_PORT, network);
+  mqtt.begin(MQTT_BROKER_ADDRESS, MQTT_PORT, network);
   Serial.print("ESP32 - Connecting to MQTT broker");
 
   while (!mqtt.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
@@ -52,57 +52,36 @@ void connectToMQTT() {
   Serial.println("ESP32 - MQTT broker Connected");
 }
 
-void sendMQTT(int xValue, int yValue, int buttonAState, bool shouldSendX, bool shouldSendY, bool shouldSendButtonAState) {
-  bool shouldSendMQTT = false;
-  StaticJsonDocument<200> message;
-  message["timestamp"] = millis();
-
-  if (shouldSendX) {
-    message["xValue"] = xValue;
-    shouldSendMQTT = true;
-  }
-  if (shouldSendY) {
-    message["yValue"] = yValue;
-    shouldSendMQTT = true;
-  }
-  if (shouldSendButtonAState) {
-    message["buttonA"] = buttonAState;
-    shouldSendMQTT = true;
-  }
-
-  if (!shouldSendMQTT) return;
-
+void sendMQTT(int xValue, int yValue, int buttonAState) {
   if (!mqtt.connected()) {
-    Serial.println("ESP32 - Lost connection to MQTT broker. Trying again...");
+    Serial.println("ESP32 - Lost connection to MQTT broker. Reconnecting...");
     connectToMQTT();
   }
 
-  analogWrite(EXT_LED_PIN, 10);
+  StaticJsonDocument<200> message;
+  message["timestamp"] = millis();
+  message["xValue"] = xValue;  // Toujours envoyer xValue
+  message["yValue"] = yValue;
+  message["buttonA"] = buttonAState;
 
   char messageBuffer[512];
   serializeJson(message, messageBuffer);
 
   const char* playerTopic = (playerId == 2) ? PUBLISH_TOPIC_PLAYER2 : PUBLISH_TOPIC_PLAYER1;
 
-  bool published = mqtt.publish(playerTopic, messageBuffer);
-  if(!published) {
-    Serial.print("Failed to publish to MQTT broker");
-    sendMQTT(xValue, yValue, buttonAState, shouldSendX, shouldSendY, shouldSendButtonAState);
+  if (!mqtt.publish(playerTopic, messageBuffer)) {
+    Serial.println("Failed to publish to MQTT broker. Retrying...");
+    delay(100);
+    sendMQTT(xValue, yValue, buttonAState);
     return;
   }
-  Serial.println("ESP32 - sent to MQTT:");
-  Serial.print("- topic: ");
-  Serial.println(playerTopic);
-  Serial.print("- payload:");
+
+  Serial.println("ESP32 - Sent to MQTT:");
   Serial.println(messageBuffer);
-  Serial.println();
-  analogWrite(EXT_LED_PIN, 0);
 }
 
 void setup() {
   Serial.begin(9600);
-
-  // Set the ADC attenuation to 11 dB (up to ~3.3V input)
   analogSetAttenuation(ADC_11db);
 
   pinMode(EXT_LED_PIN, OUTPUT);
@@ -112,55 +91,32 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.print("No Wifi connexion");
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-    Serial.println("");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
   }
+  Serial.println("\nWiFi Connected!");
 
   connectToMQTT();
 }
 
 void loop() {
   int xValue = analogRead(VRX_PIN);
+  delay(10);
   int yValue = analogRead(VRY_PIN);
+  delay(10);
   int buttonAState = digitalRead(BUTTON_A_PIN);
   int buttonPlayerState = digitalRead(BUTTON_PLAYER_PIN);
-
-  bool shouldSendXValue = false;
-  bool shouldSendYValue = false;
-  bool shouldSendButtonAState = false;
 
   int mappedXValue = normalizeJoystickValue(xValue);
   int mappedYValue = normalizeJoystickValue(yValue);
 
-
-  if (abs(xValue - prevXValue) > JOYSTICK_DEADZONE) {
+  if (abs(xValue - prevXValue) > JOYSTICK_DEADZONE || abs(yValue - prevYValue) > JOYSTICK_DEADZONE || buttonAState != prevButtonAState) {
     prevXValue = xValue;
-    // Serial.print("new value x : ");
-    // Serial.println(xValue);
-    Serial.print("new mapped value x : ");
-    Serial.println(mappedXValue);
-    shouldSendXValue = true;
-  }
-
-  if (abs(yValue - prevYValue) > JOYSTICK_DEADZONE) {
     prevYValue = yValue;
-    // Serial.print("new value y : ");
-    // Serial.println(yValue);
-    Serial.print("new mapped value y : ");
-    Serial.println(mappedYValue);
-    shouldSendYValue = true;
-  }
-
-  if (buttonAState != prevButtonAState) {
     prevButtonAState = buttonAState;
-    Serial.print("Toggle A button : ");
-    Serial.println(buttonAState);
-    shouldSendButtonAState = true;
+
+    sendMQTT(mappedXValue, mappedYValue, buttonAState);
   }
 
   if (buttonPlayerState == HIGH) {
@@ -171,8 +127,6 @@ void loop() {
     delay(300);
     analogWrite(EXT_LED_PIN, 0);
   }
-
-  sendMQTT(mappedXValue, mappedYValue, buttonAState, shouldSendXValue, shouldSendYValue, shouldSendButtonAState);
 
   delay(50);
 }
