@@ -72,6 +72,11 @@ void sendMQTT(int xValue, int yValue, int buttonAState, bool shouldSendX, bool s
 
   if (!shouldSendMQTT) return;
 
+  if (!mqtt.connected()) {
+    Serial.println("ESP32 - Lost connection to MQTT broker. Trying again...");
+    connectToMQTT();
+  }
+
   analogWrite(EXT_LED_PIN, 10);
 
   char messageBuffer[512];
@@ -120,11 +125,6 @@ void setup() {
 }
 
 void loop() {
-  if (!mqtt.connected()) {
-    Serial.println("ESP32 - Lost connection to MQTT broker. Trying again...");
-    connectToMQTT();
-  }
-
   int xValue = analogRead(VRX_PIN);
   int yValue = analogRead(VRY_PIN);
   int buttonAState = digitalRead(BUTTON_A_PIN);
